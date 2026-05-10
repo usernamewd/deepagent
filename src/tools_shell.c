@@ -131,6 +131,12 @@ static long elapsed_sec(struct timespec start) {
     return now.tv_sec - start.tv_sec;
 }
 
+static void drain_fd(int fd, StrBuf *out) {
+    char buf[4096];
+    ssize_t n;
+    while ((n = read(fd, buf, sizeof(buf))) > 0) sb_append_len(out, buf, (size_t)n);
+}
+
 static void child_exec_shell(const char *command) {
     execlp("env", "env", "sh", "-c", command, (char *)NULL);
     _exit(127);
@@ -180,16 +186,13 @@ static ToolResult tool_bash(cJSON *args) {
     pfds[1].fd = errp[0]; pfds[1].events = POLLIN;
     clock_gettime(CLOCK_MONOTONIC, &start);
     for (;;) {
-        char buf[4096];
         int rc, done;
         poll(pfds, 2, 100);
         if (pfds[0].revents & POLLIN) {
-            ssize_t n;
-            while ((n = read(outp[0], buf, sizeof(buf))) > 0) sb_append_len(&out, buf, (size_t)n);
+            drain_fd(outp[0], &out);
         }
         if (pfds[1].revents & POLLIN) {
-            ssize_t n;
-            while ((n = read(errp[0], buf, sizeof(buf))) > 0) sb_append_len(&err, buf, (size_t)n);
+            drain_fd(errp[0], &err);
         }
         rc = waitpid(pid, &status, WNOHANG);
         if (rc == pid) break;
@@ -202,6 +205,8 @@ static ToolResult tool_bash(cJSON *args) {
         done = (pfds[0].revents & (POLLHUP | POLLERR)) && (pfds[1].revents & (POLLHUP | POLLERR));
         (void)done;
     }
+    drain_fd(outp[0], &out);
+    drain_fd(errp[0], &err);
     close(outp[0]); close(errp[0]);
     {
         int code = timed ? -1 : (WIFEXITED(status) ? WEXITSTATUS(status) : 128 + WTERMSIG(status));
@@ -282,7 +287,12 @@ static ToolResult tool_background_process(cJSON *args) {
         return tool_result_error("background launch failed");
     }
     fcntl(pfd[0], F_SETFL, fcntl(pfd[0], F_GETFL, 0) | O_NONBLOCK);
-    return store_proc(grand, pfd[0], cmd) ? tool_result_ok("%d", (int)grand) : tool_result_error("process table full");
+    if (!store_proc(grand, pfd[0], cmd)) {
+        kill(grand, SIGTERM);
+        close(pfd[0]);
+        return tool_result_error("process table full");
+    }
+    return tool_result_ok("%d", (int)grand);
 }
 
 static ProcEntry *find_proc(pid_t pid) {
@@ -326,7 +336,10 @@ static ToolResult tool_read_process_output(cJSON *args) {
     ssize_t n;
     if (!p) return tool_result_error("pid not tracked");
     while ((n = read(p->fd, buf, sizeof(buf))) > 0) sb_append_len(&out, buf, (size_t)n);
-    if (n < 0 && errno != EAGAIN && errno != EWOULDBLOCK) return tool_result_error("read: %s", strerror(errno));
+    if (n < 0 && errno != EAGAIN && errno != EWOULDBLOCK) {
+        free(out.data);
+        return tool_result_error("read: %s", strerror(errno));
+    }
     if (!out.data) return tool_result_ok("no output yet");
     return (ToolResult){out.data, 1};
 }
@@ -343,15 +356,15 @@ static ToolResult tool_list_processes(cJSON *args) {
 static ToolResult tool_get_process_status(cJSON *args) {
     int pid = tools_json_get_int(args, "pid", -1);
     ProcEntry *p = find_proc((pid_t)pid);
-    int status;
-    pid_t rc;
     if (!p) return tool_result_ok("not found");
-    rc = waitpid((pid_t)pid, &status, WNOHANG);
-    if (rc == 0) return tool_result_ok("running");
-    if (rc < 0) return tool_result_ok("running");
-    p->active = 0;
-    p->exit_code = WIFEXITED(status) ? WEXITSTATUS(status) : 128 + WTERMSIG(status);
-    return tool_result_ok("exited: %d", p->exit_code);
+    if (!p->active) return tool_result_ok("exited: unknown");
+    if (kill((pid_t)pid, 0) == 0 || errno == EPERM) return tool_result_ok("running");
+    if (errno == ESRCH) {
+        p->active = 0;
+        p->exit_code = -1;
+        return tool_result_ok("exited: unknown");
+    }
+    return tool_result_error("status: %s", strerror(errno));
 }
 
 static void reg(const char *name, const char *desc, ToolFn fn, cJSON *s) { tools_register(name, desc, fn, s); }
