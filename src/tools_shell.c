@@ -114,9 +114,20 @@ static ToolResult tool_bash(cJSON *args) {
         if (!ui_confirm("Allow DeepAgent to execute shell commands this session?")) return tool_result_error("bash cancelled");
         g_bash_confirmed = 1;
     }
-    if (pipe(outp) < 0 || pipe(errp) < 0) return tool_result_error("pipe: %s", strerror(errno));
+    if (pipe(outp) < 0) return tool_result_error("pipe: %s", strerror(errno));
+    if (pipe(errp) < 0) {
+        close(outp[0]);
+        close(outp[1]);
+        return tool_result_error("pipe: %s", strerror(errno));
+    }
     pid = fork();
-    if (pid < 0) return tool_result_error("fork: %s", strerror(errno));
+    if (pid < 0) {
+        close(outp[0]);
+        close(outp[1]);
+        close(errp[0]);
+        close(errp[1]);
+        return tool_result_error("fork: %s", strerror(errno));
+    }
     if (pid == 0) {
         close(outp[0]); close(errp[0]);
         dup2(outp[1], STDOUT_FILENO);

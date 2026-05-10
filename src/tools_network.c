@@ -89,7 +89,10 @@ static ToolResult http_common(cJSON *args, int post) {
     Buffer buf = {0};
     long status = 0;
     char *ctype = NULL;
-    if (!url) return tool_result_error("url required");
+    if (!url) {
+        curl_slist_free_all(headers);
+        return tool_result_error("url required");
+    }
     curl = curl_easy_init();
     if (!curl) return tool_result_error("curl init failed");
     if (post && ctype_arg) {
@@ -118,10 +121,10 @@ static ToolResult http_common(cJSON *args, int post) {
     }
     curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &status);
     curl_easy_getinfo(curl, CURLINFO_CONTENT_TYPE, &ctype);
-    curl_slist_free_all(headers);
-    curl_easy_cleanup(curl);
     {
         ToolResult r = make_http_json(status, buf.data ? buf.data : "", ctype);
+        curl_slist_free_all(headers);
+        curl_easy_cleanup(curl);
         free(buf.data);
         return r;
     }

@@ -318,16 +318,18 @@ static ToolResult tool_insert_lines(cJSON *args) {
     size_t cap = 0;
     int n = 0, inserted = 0;
     StrBuf out = {0};
+    size_t content_len;
     if (!path || !content || after < 0) return tool_result_error("path, after_line, content required");
+    content_len = strlen(content);
     f = fopen(path, "r");
     if (!f) return tool_result_error("open %s: %s", path, strerror(errno));
-    if (after == 0) { sb_append(&out, content); if (content[strlen(content) - 1] != '\n') sb_append(&out, "\n"); inserted = 1; }
+    if (after == 0) { sb_append(&out, content); if (content_len == 0 || content[content_len - 1] != '\n') sb_append(&out, "\n"); inserted = 1; }
     while (getline(&line, &cap, f) != -1) {
         n++;
         sb_append(&out, line);
         if (!inserted && n == after) {
             sb_append(&out, content);
-            if (content[strlen(content) - 1] != '\n') sb_append(&out, "\n");
+            if (content_len == 0 || content[content_len - 1] != '\n') sb_append(&out, "\n");
             inserted = 1;
         }
     }
