@@ -99,16 +99,6 @@ static int contains_root_rm(const char *cmd) {
     return 0;
 }
 
-static int contains_device_token(const char *cmd, const char *dev) {
-    size_t n = strlen(dev);
-    const char *p = cmd;
-    while ((p = strstr(p, dev)) != NULL) {
-        if (is_shell_boundary(p[n])) return 1;
-        p++;
-    }
-    return 0;
-}
-
 static int contains_mkfs_command(const char *cmd) {
     const char *p = cmd;
     while ((p = strstr(p, "mkfs.")) != NULL) {
@@ -120,8 +110,8 @@ static int contains_mkfs_command(const char *cmd) {
 
 static int blocked_command(const char *cmd) {
     return contains_root_rm(cmd) || strstr(cmd, ":(){:|:&};:") ||
-           contains_device_token(cmd, "/dev/sda") ||
-           contains_device_token(cmd, "/dev/nvme") ||
+           strstr(cmd, "/dev/sda") ||
+           strstr(cmd, "/dev/nvme") ||
            contains_mkfs_command(cmd);
 }
 
