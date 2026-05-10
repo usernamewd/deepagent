@@ -94,7 +94,10 @@ static ToolResult http_common(cJSON *args, int post) {
         return tool_result_error("url required");
     }
     curl = curl_easy_init();
-    if (!curl) return tool_result_error("curl init failed");
+    if (!curl) {
+        curl_slist_free_all(headers);
+        return tool_result_error("curl init failed");
+    }
     if (post && ctype_arg) {
         char h[256];
         snprintf(h, sizeof(h), "Content-Type: %s", ctype_arg);

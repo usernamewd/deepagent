@@ -110,7 +110,12 @@ static int write_atomic(const char *path, const char *data, size_t len) {
         unlink(tmp);
         return -1;
     }
-    if (fwrite(data, 1, len, f) != len || fclose(f) != 0) {
+    if (fwrite(data, 1, len, f) != len) {
+        fclose(f);
+        unlink(tmp);
+        return -1;
+    }
+    if (fclose(f) != 0) {
         unlink(tmp);
         return -1;
     }
@@ -253,7 +258,12 @@ static ToolResult tool_patch_file(cJSON *args) {
     if (fd < 0) return tool_result_error("mkstemp: %s", strerror(errno));
     f = fdopen(fd, "wb");
     if (!f) { close(fd); unlink(tmpl); return tool_result_error("fdopen failed"); }
-    if (fwrite(diff, 1, strlen(diff), f) != strlen(diff) || fclose(f) != 0) {
+    if (fwrite(diff, 1, strlen(diff), f) != strlen(diff)) {
+        fclose(f);
+        unlink(tmpl);
+        return tool_result_error("write temp diff failed");
+    }
+    if (fclose(f) != 0) {
         unlink(tmpl);
         return tool_result_error("write temp diff failed");
     }

@@ -81,10 +81,46 @@ static int sb_appendf(StrBuf *b, const char *fmt, ...) {
     return n;
 }
 
+static int is_shell_boundary(char c) {
+    return c == '\0' || c == ' ' || c == '\t' || c == '\n' ||
+           c == ';' || c == '&' || c == '|' || c == ')' || c == '(' ||
+           c == '<' || c == '>';
+}
+
+static int contains_root_rm(const char *cmd) {
+    const char *p = cmd;
+    while ((p = strstr(p, "rm -rf /")) != NULL) {
+        char next = p[7];
+        if (next == '\0' || is_shell_boundary(next) || next == '*') return 1;
+        p++;
+    }
+    return 0;
+}
+
+static int contains_device_token(const char *cmd, const char *dev) {
+    size_t n = strlen(dev);
+    const char *p = cmd;
+    while ((p = strstr(p, dev)) != NULL) {
+        if (is_shell_boundary(p[n])) return 1;
+        p++;
+    }
+    return 0;
+}
+
+static int contains_mkfs_command(const char *cmd) {
+    const char *p = cmd;
+    while ((p = strstr(p, "mkfs.")) != NULL) {
+        if (p == cmd || is_shell_boundary(p[-1])) return 1;
+        p++;
+    }
+    return 0;
+}
+
 static int blocked_command(const char *cmd) {
-    return strstr(cmd, "rm -rf /") || strstr(cmd, "rm -rf /*") ||
-           strstr(cmd, ":(){:|:&};:") || strstr(cmd, "/dev/sda") ||
-           strstr(cmd, "/dev/nvme") || strstr(cmd, "mkfs.");
+    return contains_root_rm(cmd) || strstr(cmd, ":(){:|:&};:") ||
+           contains_device_token(cmd, "/dev/sda") ||
+           contains_device_token(cmd, "/dev/nvme") ||
+           contains_mkfs_command(cmd);
 }
 
 static long elapsed_sec(struct timespec start) {
@@ -211,7 +247,13 @@ static ToolResult tool_background_process(cJSON *args) {
         return tool_result_error("pipe: %s", strerror(errno));
     }
     child = fork();
-    if (child < 0) return tool_result_error("fork: %s", strerror(errno));
+    if (child < 0) {
+        close(pfd[0]);
+        close(pfd[1]);
+        close(pidfd[0]);
+        close(pidfd[1]);
+        return tool_result_error("fork: %s", strerror(errno));
+    }
     if (child == 0) {
         close(pidfd[0]);
         grand = fork();

@@ -134,6 +134,7 @@ int api_chat_completion(const Config *cfg, const char *api_key, cJSON *messages,
         }
         out->raw_json = resp.data ? strdup(resp.data) : strdup("");
         if (!parse_response(resp.data ? resp.data : "", out)) {
+            api_response_free(out);
             free(resp.data);
             free(body);
             return 0;
