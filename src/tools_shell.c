@@ -189,27 +189,45 @@ static int store_proc(pid_t pid, int fd, const char *cmd) {
 
 static ToolResult tool_background_process(cJSON *args) {
     const char *cmd = tools_json_get_string(args, "command", NULL);
-    int pfd[2];
+    int pfd[2], pidfd[2];
     pid_t child;
+    pid_t grand = -1;
     if (!cmd) return tool_result_error("command required");
     if (blocked_command(cmd)) return tool_result_error("blocked dangerous command pattern");
     if (pipe(pfd) < 0) return tool_result_error("pipe: %s", strerror(errno));
+    if (pipe(pidfd) < 0) {
+        close(pfd[0]); close(pfd[1]);
+        return tool_result_error("pipe: %s", strerror(errno));
+    }
     child = fork();
     if (child < 0) return tool_result_error("fork: %s", strerror(errno));
     if (child == 0) {
-        pid_t grand = fork();
+        close(pidfd[0]);
+        grand = fork();
         if (grand < 0) _exit(127);
-        if (grand > 0) _exit(0);
+        if (grand > 0) {
+            ssize_t ignored = write(pidfd[1], &grand, sizeof(grand));
+            (void)ignored;
+            _exit(0);
+        }
+        close(pidfd[1]);
         close(pfd[0]);
         dup2(pfd[1], STDOUT_FILENO);
         dup2(pfd[1], STDERR_FILENO);
         close(pfd[1]);
         child_exec_shell(cmd);
     }
+    close(pidfd[1]);
     waitpid(child, NULL, 0);
+    if (read(pidfd[0], &grand, sizeof(grand)) != sizeof(grand)) grand = -1;
+    close(pidfd[0]);
     close(pfd[1]);
+    if (grand <= 0) {
+        close(pfd[0]);
+        return tool_result_error("background launch failed");
+    }
     fcntl(pfd[0], F_SETFL, fcntl(pfd[0], F_GETFL, 0) | O_NONBLOCK);
-    return store_proc(child + 1, pfd[0], cmd) ? tool_result_ok("%d", (int)(child + 1)) : tool_result_error("process table full");
+    return store_proc(grand, pfd[0], cmd) ? tool_result_ok("%d", (int)grand) : tool_result_error("process table full");
 }
 
 static ProcEntry *find_proc(pid_t pid) {
