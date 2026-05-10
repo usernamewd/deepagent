@@ -88,9 +88,11 @@ static int is_shell_boundary(char c) {
 }
 
 static int contains_root_rm(const char *cmd) {
+    const char pattern[] = "rm -rf /";
+    const size_t pattern_len = sizeof(pattern) - 1;
     const char *p = cmd;
-    while ((p = strstr(p, "rm -rf /")) != NULL) {
-        char next = p[7];
+    while ((p = strstr(p, pattern)) != NULL) {
+        char next = p[pattern_len];
         if (next == '\0' || is_shell_boundary(next) || next == '*') return 1;
         p++;
     }
