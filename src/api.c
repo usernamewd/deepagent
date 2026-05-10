@@ -47,7 +47,7 @@ static cJSON *build_request(const Config *cfg, cJSON *messages, cJSON *tools) {
     cJSON *root = cJSON_CreateObject();
     cJSON_AddStringToObject(root, "model", cfg->model);
     cJSON_AddItemToObject(root, "messages", cJSON_Duplicate(messages, 1));
-    cJSON_AddItemToObject(root, "tools", tools);
+    cJSON_AddItemToObject(root, "tools", cJSON_Duplicate(tools, 1));
     cJSON_AddStringToObject(root, "tool_choice", "auto");
     cJSON_AddBoolToObject(root, "parallel_tool_calls", 1);
     cJSON_AddBoolToObject(root, "stream", 0);
@@ -134,6 +134,7 @@ int api_chat_completion(const Config *cfg, const char *api_key, cJSON *messages,
         }
         out->raw_json = resp.data ? strdup(resp.data) : strdup("");
         if (!parse_response(resp.data ? resp.data : "", out)) {
+            api_response_free(out);
             free(resp.data);
             free(body);
             return 0;

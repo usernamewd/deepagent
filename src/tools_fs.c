@@ -158,7 +158,11 @@ static ToolResult write_common(cJSON *args, const char *mode) {
     f = fopen(path, mode);
     if (!f) return tool_result_error("open %s: %s", path, strerror(errno));
     n = fwrite(content, 1, strlen(content), f);
-    if (n != strlen(content) || fclose(f) != 0) {
+    if (n != strlen(content)) {
+        fclose(f);
+        return tool_result_error("write %s failed", path);
+    }
+    if (fclose(f) != 0) {
         return tool_result_error("write %s failed", path);
     }
     return tool_result_ok("%zu bytes written", n);

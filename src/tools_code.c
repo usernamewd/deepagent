@@ -110,7 +110,12 @@ static int write_atomic(const char *path, const char *data, size_t len) {
         unlink(tmp);
         return -1;
     }
-    if (fwrite(data, 1, len, f) != len || fclose(f) != 0) {
+    if (fwrite(data, 1, len, f) != len) {
+        fclose(f);
+        unlink(tmp);
+        return -1;
+    }
+    if (fclose(f) != 0) {
         unlink(tmp);
         return -1;
     }
@@ -253,7 +258,12 @@ static ToolResult tool_patch_file(cJSON *args) {
     if (fd < 0) return tool_result_error("mkstemp: %s", strerror(errno));
     f = fdopen(fd, "wb");
     if (!f) { close(fd); unlink(tmpl); return tool_result_error("fdopen failed"); }
-    if (fwrite(diff, 1, strlen(diff), f) != strlen(diff) || fclose(f) != 0) {
+    if (fwrite(diff, 1, strlen(diff), f) != strlen(diff)) {
+        fclose(f);
+        unlink(tmpl);
+        return tool_result_error("write temp diff failed");
+    }
+    if (fclose(f) != 0) {
         unlink(tmpl);
         return tool_result_error("write temp diff failed");
     }
@@ -318,16 +328,18 @@ static ToolResult tool_insert_lines(cJSON *args) {
     size_t cap = 0;
     int n = 0, inserted = 0;
     StrBuf out = {0};
+    size_t content_len;
     if (!path || !content || after < 0) return tool_result_error("path, after_line, content required");
+    content_len = strlen(content);
     f = fopen(path, "r");
     if (!f) return tool_result_error("open %s: %s", path, strerror(errno));
-    if (after == 0) { sb_append(&out, content); if (content[strlen(content) - 1] != '\n') sb_append(&out, "\n"); inserted = 1; }
+    if (after == 0) { sb_append(&out, content); if (content_len == 0 || content[content_len - 1] != '\n') sb_append(&out, "\n"); inserted = 1; }
     while (getline(&line, &cap, f) != -1) {
         n++;
         sb_append(&out, line);
         if (!inserted && n == after) {
             sb_append(&out, content);
-            if (content[strlen(content) - 1] != '\n') sb_append(&out, "\n");
+            if (content_len == 0 || content[content_len - 1] != '\n') sb_append(&out, "\n");
             inserted = 1;
         }
     }
