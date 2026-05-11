@@ -29,6 +29,7 @@ static char *xstrdup(const char *s) {
 
 void config_init(Config *cfg) {
     memset(cfg, 0, sizeof(*cfg));
+    cfg->provider = xstrdup(DEEPAGENT_PROVIDER_NVIDIA);
     cfg->model = xstrdup(DEEPAGENT_DEFAULT_MODEL);
     cfg->system_prompt = xstrdup(DEEPAGENT_DEFAULT_SYSTEM_PROMPT);
     cfg->max_iterations = 50;
@@ -42,6 +43,7 @@ void config_free(Config *cfg) {
     if (!cfg) {
         return;
     }
+    free(cfg->provider);
     free(cfg->model);
     free(cfg->system_prompt);
     free(cfg->memory_file);
@@ -50,6 +52,7 @@ void config_free(Config *cfg) {
 
 void config_print_usage(const char *prog) {
     printf("Usage: %s [options]\n", prog);
+    printf("  --provider <name>        API provider: nvidia or pollinations\n");
     printf("  --model <id>             Model ID string\n");
     printf("  --system <prompt>        System prompt\n");
     printf("  --max-iterations <n>     Max ReAct iterations (default 50)\n");
@@ -108,11 +111,37 @@ static int set_string(char **dst, const char *value) {
     return 1;
 }
 
+static int set_provider(Config *cfg, const char *provider) {
+    int should_use_provider_default;
+    if (strcmp(provider, DEEPAGENT_PROVIDER_NVIDIA) != 0 &&
+        strcmp(provider, DEEPAGENT_PROVIDER_POLLINATIONS) != 0) {
+        fprintf(stderr, "Unsupported provider: %s\n", provider);
+        return 0;
+    }
+    should_use_provider_default = strcmp(cfg->model, DEEPAGENT_DEFAULT_MODEL) == 0 ||
+                                  strcmp(cfg->model, DEEPAGENT_DEFAULT_POLLINATIONS_MODEL) == 0;
+    if (strcmp(provider, DEEPAGENT_PROVIDER_POLLINATIONS) == 0 &&
+        should_use_provider_default) {
+        if (!set_string(&cfg->model, DEEPAGENT_DEFAULT_POLLINATIONS_MODEL)) {
+            return 0;
+        }
+    }
+    if (strcmp(provider, DEEPAGENT_PROVIDER_NVIDIA) == 0 &&
+        should_use_provider_default) {
+        if (!set_string(&cfg->model, DEEPAGENT_DEFAULT_MODEL)) {
+            return 0;
+        }
+    }
+    return set_string(&cfg->provider, provider);
+}
+
 int config_parse(Config *cfg, int argc, char **argv) {
     int i;
     for (i = 1; i < argc; i++) {
         char *value = NULL;
-        if (strcmp(argv[i], "--model") == 0) {
+        if (strcmp(argv[i], "--provider") == 0) {
+            if (!require_value(argc, argv, &i, argv[i], &value) || !set_provider(cfg, value)) return 0;
+        } else if (strcmp(argv[i], "--model") == 0) {
             if (!require_value(argc, argv, &i, argv[i], &value) || !set_string(&cfg->model, value)) return 0;
         } else if (strcmp(argv[i], "--system") == 0) {
             if (!require_value(argc, argv, &i, argv[i], &value) || !set_string(&cfg->system_prompt, value)) return 0;
@@ -153,4 +182,35 @@ const Config *config_global(void) {
 
 void config_set_global(const Config *cfg) {
     g_config = cfg;
+}
+
+const char *config_provider_display_name(const Config *cfg) {
+    if (cfg && cfg->provider && strcmp(cfg->provider, DEEPAGENT_PROVIDER_POLLINATIONS) == 0) {
+        return "Pollinations";
+    }
+    return "NVIDIA NIM";
+}
+
+const char *config_provider_endpoint(const Config *cfg) {
+    if (cfg && cfg->provider && strcmp(cfg->provider, DEEPAGENT_PROVIDER_POLLINATIONS) == 0) {
+        return "https://gen.pollinations.ai/v1/chat/completions";
+    }
+    return "https://integrate.api.nvidia.com/v1/chat/completions";
+}
+
+const char *config_provider_env_var(const Config *cfg) {
+    if (cfg && cfg->provider && strcmp(cfg->provider, DEEPAGENT_PROVIDER_POLLINATIONS) == 0) {
+        return "POLLINATIONS_API_KEY";
+    }
+    return "NVIDIA_API_KEY";
+}
+
+int config_api_key_valid(const Config *cfg, const char *api_key) {
+    if (!api_key || !*api_key) {
+        return 0;
+    }
+    if (cfg && cfg->provider && strcmp(cfg->provider, DEEPAGENT_PROVIDER_NVIDIA) == 0) {
+        return strncmp(api_key, "nvapi-", 6) == 0;
+    }
+    return 1;
 }

@@ -1,7 +1,7 @@
 /*
  * main.c
  *
- * DeepAgent entry point. Parses CLI configuration, validates NVIDIA_API_KEY,
+ * DeepAgent entry point. Parses CLI configuration, validates provider API keys,
  * initializes curl, UI, and tool registry, then starts the interactive REPL.
  */
 
@@ -31,15 +31,16 @@ int main(int argc, char **argv) {
     }
     ui_set_color_enabled(cfg.color_enabled);
     config_set_global(&cfg);
-    api_key = getenv("NVIDIA_API_KEY");
-    if (!api_key || strncmp(api_key, "nvapi-", 6) != 0) {
-        ui_print_error("Set NVIDIA_API_KEY to a valid NVIDIA NIM key beginning with nvapi-");
+    api_key = getenv(config_provider_env_var(&cfg));
+    if (!config_api_key_valid(&cfg, api_key)) {
+        ui_print_error("Set %s for %s%s", config_provider_env_var(&cfg), config_provider_display_name(&cfg),
+                       strcmp(config_provider_env_var(&cfg), "NVIDIA_API_KEY") == 0 ? " to a valid key beginning with nvapi-" : "");
         config_free(&cfg);
         return 2;
     }
     curl_global_init(CURL_GLOBAL_DEFAULT);
     tools_register_all();
-    ui_print_system("DeepAgent %s using model %s", DEEPAGENT_VERSION, cfg.model);
+    ui_print_system("DeepAgent %s using %s model %s", DEEPAGENT_VERSION, config_provider_display_name(&cfg), cfg.model);
     if (agent_init(&agent, &cfg)) {
         rc = agent_run_interactive(&agent) ? 0 : 1;
         agent_free(&agent);

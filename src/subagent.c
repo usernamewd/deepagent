@@ -47,6 +47,8 @@ ToolResult tool_spawn_subagent(cJSON *args) {
         cfg.subagent_timeout = base->subagent_timeout;
         cfg.color_enabled = base->color_enabled;
         cfg.verbose = base->verbose;
+        free(cfg.provider);
+        cfg.provider = base->provider ? strdup(base->provider) : NULL;
         free(cfg.memory_file);
         cfg.memory_file = base->memory_file ? strdup(base->memory_file) : NULL;
     }
