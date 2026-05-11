@@ -112,7 +112,8 @@ static ToolResult tool_remember(cJSON *args) {
     if (!key || !value) return tool_result_error("key and value required");
     mem = load_memory(&path);
     if (!mem) return tool_result_error("load memory failed");
-    cJSON_ReplaceItemInObject(mem, key, cJSON_CreateString(value));
+    cJSON_DeleteItemFromObject(mem, key);
+    cJSON_AddStringToObject(mem, key, value);
     if (save_memory(path, mem) < 0) {
         cJSON_Delete(mem); free(path);
         return tool_result_error("save memory: %s", strerror(errno));
