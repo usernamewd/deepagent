@@ -1,9 +1,9 @@
 /*
  * api.c
  *
- * NVIDIA NIM chat completions HTTP layer. Builds OpenAI-compatible JSON,
- * executes POST requests with libcurl, collects response bodies dynamically,
- * and retries 429/5xx with exponential backoff.
+ * Provider chat completions HTTP layer. Builds OpenAI-compatible JSON, executes
+ * POST requests with libcurl, collects response bodies dynamically, and retries
+ * 429/5xx with exponential backoff.
  */
 
 #define _POSIX_C_SOURCE 200809L
@@ -16,8 +16,6 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
-
-#define NIM_ENDPOINT "https://integrate.api.nvidia.com/v1/chat/completions"
 
 typedef struct {
     char *data;
@@ -56,7 +54,7 @@ static cJSON *build_request(const Config *cfg, cJSON *messages, cJSON *tools) {
     return root;
 }
 
-static int post_once(const char *api_key, const char *body, Buffer *resp, long *status) {
+static int post_once(const Config *cfg, const char *api_key, const char *body, Buffer *resp, long *status) {
     CURL *curl = curl_easy_init();
     struct curl_slist *headers = NULL;
     CURLcode rc;
@@ -65,7 +63,7 @@ static int post_once(const char *api_key, const char *body, Buffer *resp, long *
     snprintf(auth, sizeof(auth), "Authorization: Bearer %s", api_key);
     headers = curl_slist_append(headers, "Content-Type: application/json");
     headers = curl_slist_append(headers, auth);
-    curl_easy_setopt(curl, CURLOPT_URL, NIM_ENDPOINT);
+    curl_easy_setopt(curl, CURLOPT_URL, config_provider_endpoint(cfg));
     curl_easy_setopt(curl, CURLOPT_POST, 1L);
     curl_easy_setopt(curl, CURLOPT_POSTFIELDS, body);
     curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
@@ -115,7 +113,7 @@ int api_chat_completion(const Config *cfg, const char *api_key, cJSON *messages,
         Buffer resp = {0};
         long status = 0;
         if (delays[attempt] > 0) sleep((unsigned int)delays[attempt]);
-        if (!post_once(api_key, body, &resp, &status)) {
+        if (!post_once(cfg, api_key, body, &resp, &status)) {
             free(resp.data);
             if (attempt < 3) continue;
             free(body);
@@ -127,7 +125,7 @@ int api_chat_completion(const Config *cfg, const char *api_key, cJSON *messages,
             continue;
         }
         if (status < 200 || status >= 300) {
-            ui_print_error("NIM API HTTP %ld: %s", status, resp.data ? resp.data : "");
+            ui_print_error("%s API HTTP %ld: %s", config_provider_display_name(cfg), status, resp.data ? resp.data : "");
             free(resp.data);
             free(body);
             return 0;

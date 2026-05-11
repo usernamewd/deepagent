@@ -1,6 +1,6 @@
 # DeepAgent
 
-DeepAgent is a Linux CLI AI coding agent written in C11. It uses the NVIDIA NIM cloud inference API through the OpenAI-compatible chat completions endpoint and exposes a local tool system for file editing, shell execution, code search, HTTP requests, process management, system inspection, persistent memory, and one-level subagents.
+DeepAgent is a Linux CLI AI coding agent written in C11. It uses OpenAI-compatible chat completions from NVIDIA NIM or Pollinations and exposes a local tool system for file editing, shell execution, code search, HTTP requests, process management, system inspection, persistent memory, and one-level subagents.
 
 ## Dependencies
 
@@ -10,7 +10,16 @@ DeepAgent is a Linux CLI AI coding agent written in C11. It uses the NVIDIA NIM 
 - POSIX/Linux libc and headers
 - cJSON, downloaded automatically from <https://github.com/DaveGamble/cJSON> by `scripts/setup.sh`
 
-## NVIDIA NIM API key
+## API providers and keys
+
+DeepAgent supports two chat-completion providers:
+
+| Provider | Endpoint | API key env var | Default model |
+| --- | --- | --- | --- |
+| NVIDIA NIM | `https://integrate.api.nvidia.com/v1/chat/completions` | `NVIDIA_API_KEY` | `deepseek-ai/deepseek-v4-flash` |
+| Pollinations | `https://gen.pollinations.ai/v1/chat/completions` | `POLLINATIONS_API_KEY` | `openai` |
+
+For NVIDIA NIM:
 
 1. Visit <https://build.nvidia.com/>.
 2. Sign in with an NVIDIA account.
@@ -21,7 +30,17 @@ DeepAgent is a Linux CLI AI coding agent written in C11. It uses the NVIDIA NIM 
 export NVIDIA_API_KEY='nvapi-your-key-here'
 ```
 
-DeepAgent exits with a clear error if `NVIDIA_API_KEY` is absent.
+For Pollinations:
+
+1. Visit <https://enter.pollinations.ai/>.
+2. Create an API key.
+3. Export it before running DeepAgent:
+
+```sh
+export POLLINATIONS_API_KEY='sk_your_key_here'
+```
+
+DeepAgent exits with a clear error if the configured provider's API key is absent.
 
 ## Build
 
@@ -38,6 +57,9 @@ The build produces `build/deepagent`. The Makefile downloads cJSON automatically
 export NVIDIA_API_KEY='nvapi-your-key-here'
 ./build/deepagent
 ./build/deepagent --model deepseek-ai/deepseek-v4-pro --max-iterations 80
+export POLLINATIONS_API_KEY='sk_your_key_here'
+./build/deepagent --provider pollinations --model openai
+./build/deepagent --provider pollinations --model qwen-coder --temperature 0.1
 ./build/deepagent --auto-approve --temperature 0.1 --memory-file ./memory.json
 ./build/deepagent --system "You are a cautious code reviewer."
 ```
@@ -110,3 +132,8 @@ Unless `--auto-approve` is set, DeepAgent asks for confirmation before the first
 | `meta/llama-3.1-70b-instruct` | NIM tool-calling capable instruct model | model-dependent |
 | `qwen/qwen3-next-instruct` | Agentic coding model | 256K tokens |
 | `zhipuai/glm-4.7` | Multilingual coding and tool use | model-dependent |
+| `openai` | Pollinations default GPT-5.4 Nano model with tools | provider-managed |
+| `openai-fast` | Pollinations GPT-5 Nano, optimized for speed | provider-managed |
+| `openai-large` | Pollinations GPT-5.4 model with tools and reasoning | provider-managed |
+| `qwen-coder` | Pollinations Qwen3 Coder 30B model with tools | provider-managed |
+| `mistral` | Pollinations Mistral Small 3.1 model with tools | provider-managed |

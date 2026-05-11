@@ -2,8 +2,9 @@
  * agent.c
  *
  * ReAct loop orchestration. The agent stores OpenAI-compatible conversation
- * history, sends full history and tool definitions to NVIDIA NIM, dispatches
- * requested tool calls, appends observations, and repeats until a final answer.
+ * history, sends full history and tool definitions to the configured provider,
+ * dispatches requested tool calls, appends observations, and repeats until a
+ * final answer.
  */
 
 #define _POSIX_C_SOURCE 200809L
@@ -86,10 +87,12 @@ static int handle_tool_calls(AgentState *state, ApiResponse *res) {
 }
 
 static int react_until_done(AgentState *state) {
-    const char *api_key = getenv("NVIDIA_API_KEY");
+    const char *env_var = config_provider_env_var(state->config);
+    const char *api_key = getenv(env_var);
     int iter;
-    if (!api_key || strncmp(api_key, "nvapi-", 6) != 0) {
-        ui_print_error("NVIDIA_API_KEY is required and should start with nvapi-");
+    if (!config_api_key_valid(state->config, api_key)) {
+        ui_print_error("%s is required for %s%s", env_var, config_provider_display_name(state->config),
+                       strcmp(env_var, "NVIDIA_API_KEY") == 0 ? " and should start with nvapi-" : "");
         return 0;
     }
     for (iter = 0; iter < state->config->max_iterations; iter++) {
@@ -98,7 +101,7 @@ static int react_until_done(AgentState *state) {
         if (!tool_defs) return 0;
         if (!api_chat_completion(state->config, api_key, state->messages, tool_defs, &res)) {
             cJSON_Delete(tool_defs);
-            ui_print_error("NIM API request failed");
+            ui_print_error("%s API request failed", config_provider_display_name(state->config));
             return 0;
         }
         cJSON_Delete(tool_defs);
